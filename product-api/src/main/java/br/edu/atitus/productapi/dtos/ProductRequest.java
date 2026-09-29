@@ -1,4 +1,4 @@
-package br.edu.atitus.productapi.dtos;
+package br.edu.atitus.currencyapi.dtos;
 
 public record ProductRequest(
         String brand,

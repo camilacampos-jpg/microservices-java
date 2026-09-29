@@ -1,9 +1,9 @@
-package br.edu.atitus.productapi.servicesimpl;
+package br.edu.atitus.currencyapi.servicesimpl;
 
-import br.edu.atitus.productapi.dtos.ProductRequest;
-import br.edu.atitus.productapi.dtos.ProductResponse;
-import br.edu.atitus.productapi.entities.ProductEntity;
-import br.edu.atitus.productapi.services.ProductService;
+import br.edu.atitus.currencyapi.dtos.ProductRequest;
+import br.edu.atitus.currencyapi.dtos.ProductResponse;
+import br.edu.atitus.currencyapi.entities.ProductEntity;
+import br.edu.atitus.currencyapi.services.ProductService;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;

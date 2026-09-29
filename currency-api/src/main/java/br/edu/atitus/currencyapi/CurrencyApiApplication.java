@@ -2,13 +2,12 @@ package br.edu.atitus.currencyapi;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 
-@SpringBootApplication()
-public class ProductApiApplication {
+@SpringBootApplication
+public class CurrencyApiApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(ProductApiApplication.class, args);
+        SpringApplication.run(CurrencyApiApplication.class, args);
     }
 
 }

@@ -1,8 +1,8 @@
-package br.edu.atitus.productapi.services;
+package br.edu.atitus.currencyapi.services;
 
-import br.edu.atitus.productapi.dtos.ProductRequest;
-import br.edu.atitus.productapi.dtos.ProductResponse;
-import br.edu.atitus.productapi.entities.ProductEntity;
+import br.edu.atitus.currencyapi.dtos.ProductRequest;
+import br.edu.atitus.currencyapi.dtos.ProductResponse;
+import br.edu.atitus.currencyapi.entities.ProductEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
