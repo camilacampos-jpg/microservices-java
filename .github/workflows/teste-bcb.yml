@@ -1,0 +1,125 @@
+name: teste-currency-api-bcb
+on:
+  push:
+    branches: [teste-bcb]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21', cache: maven }
+      - name: Consul + bancos (carrega o start_consul.bat)
+        run: |
+          docker run -d --name consul --network host hashicorp/consul:1.20 agent -dev -client 0.0.0.0
+          export PGPASSWORD=postgres
+          psql -h localhost -U postgres -c "create database db_product"
+          psql -h localhost -U postgres -c "create database db_currency"
+          for i in $(seq 1 30); do curl -sf localhost:8500/v1/status/leader | grep -q : && break; sleep 1; done
+          python3 - <<'PY'
+          import shlex, urllib.request
+          n = 0
+          for line in open('start_consul.bat', encoding='utf-8'):
+              if line.startswith('consul kv put'):
+                  _, _, _, k, v = shlex.split(line.strip())
+                  req = urllib.request.Request('http://localhost:8500/v1/kv/' + k, data=v.encode(), method='PUT')
+                  urllib.request.urlopen(req).read()
+                  n += 1
+          print(n, 'chaves carregadas no Consul')
+          PY
+      - name: Build
+        run: |
+          (cd currency-api && mvn -B -ntp -q package -DskipTests)
+          (cd product-api && mvn -B -ntp -q package -DskipTests)
+      - name: Testes
+        run: |
+          S=$GITHUB_STEP_SUMMARY
+          FAIL=0
+          res() { if [ "$1" = 0 ]; then echo "| $2 | ✅ | $3 |" >> $S; else echo "| $2 | ❌ | $3 |" >> $S; FAIL=1; fi; }
+          req() { curl -s -o body.txt -w "%{http_code} %{time_total}" "$1"; }
+          calls() { grep -c "Chamando API do BCB" "$1" || true; }
+          up() { for i in $(seq 1 90); do curl -sf "localhost:$1/actuator/health" >/dev/null && return 0; sleep 2; done; return 1; }
+
+          # Servidor lento para o teste de timeout (responde depois de 8s)
+          python3 - <<'PY' &
+          import time, http.server
+          class H(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  time.sleep(8)
+                  self.send_response(200); self.send_header('Content-Type','application/json'); self.end_headers()
+                  self.wfile.write(b'{"value":[]}')
+          http.server.ThreadingHTTPServer(('127.0.0.1', 9999), H).serve_forever()
+          PY
+
+          JAR=$(ls currency-api/target/currency-api-*.jar | grep -v plain)
+          # Instancia normal (registrada no Consul) + instancias de teste de falha e lentidao
+          nohup java -jar $JAR > normal.log 2>&1 &
+          nohup java -jar $JAR --server.port=8101 --app.bcb.base-url=http://localhost:9 --spring.cloud.consul.discovery.register=false > falha.log 2>&1 &
+          nohup java -jar $JAR --server.port=8102 --app.bcb.base-url=http://localhost:9999 --spring.cloud.consul.discovery.register=false > lento.log 2>&1 &
+          nohup java -jar $(ls product-api/target/product-api-*.jar | grep -v plain) > product.log 2>&1 &
+          up 8100; up 8101; up 8102; up 8000; sleep 10
+
+          echo "## Testes do currency-api (BCB + resiliencia)" >> $S
+          echo "| Cenario | Resultado | Detalhes |" >> $S
+          echo "|---|---|---|" >> $S
+
+          # 1. Moeda com cotacao no BCB
+          r=$(req "localhost:8100/currencies?source=USD&target=BRL"); b=$(cat body.txt)
+          echo "$b" | grep -q '"Currency API running in Port: 8100 - Fonte: BCB' && [ "${r%% *}" = 200 ]; res $? "1. USD->BRL com cotacao no BCB" "HTTP $r - $b"
+          r=$(req "localhost:8100/currencies?source=USD&target=EUR"); b=$(cat body.txt)
+          echo "$b" | grep -q 'Fonte: BCB' && [ "${r%% *}" = 200 ]; res $? "1b. USD->EUR (conversao via real)" "HTTP $r - $b"
+
+          # 2. Moeda sem cotacao no BCB -> banco local
+          r=$(req "localhost:8100/currencies?source=USD&target=ARS"); b=$(cat body.txt)
+          echo "$b" | grep -q 'Fonte: banco local' && [ "${r%% *}" = 200 ]; res $? "2. USD->ARS sem cotacao no BCB usa banco local" "HTTP $r - $b"
+
+          # 7. Cache: repetir USD->BRL nao chama o BCB de novo
+          antes=$(calls normal.log); req "localhost:8100/currencies?source=USD&target=BRL" >/dev/null; req "localhost:8100/currencies?source=USD&target=BRL" >/dev/null; depois=$(calls normal.log)
+          [ "$antes" = "$depois" ]; res $? "7. Cache (2 consultas repetidas)" "chamadas ao BCB antes=$antes depois=$depois"
+          antes=$(calls normal.log); req "localhost:8100/currencies?source=USD&target=ARS" >/dev/null; depois=$(calls normal.log)
+          [ "$depois" -gt "$antes" ]; res $? "7b. Resposta sem cotacao (ARS) NAO fica no cache" "chamadas ao BCB antes=$antes depois=$depois"
+
+          # 8. Sem cotacao no BCB e no banco local -> 404
+          r=$(req "localhost:8100/currencies?source=USD&target=XYZ"); b=$(cat body.txt)
+          [ "${r%% *}" = 404 ]; res $? "8. USD->XYZ sem cotacao em nenhum lugar" "HTTP $r - $b"
+
+          # 3. Falha de comunicacao -> Retry (3 tentativas) e fallback local
+          r=$(req "localhost:8101/currencies?source=USD&target=BRL"); b=$(cat body.txt); n=$(calls falha.log)
+          echo "$b" | grep -q 'Fonte: banco local' && [ "$n" = 3 ]; res $? "3. BCB fora do ar: Retry + fallback" "HTTP $r - tentativas=$n - $b"
+
+          # 5. Falhas consecutivas abrem o Circuit Breaker
+          req "localhost:8101/currencies?source=USD&target=EUR" >/dev/null
+          st=$(curl -s localhost:8101/actuator/circuitbreakers | jq -r '.circuitBreakers["bcb-api"].state'); n=$(calls falha.log)
+          [ "$st" = OPEN ]; res $? "5. Circuit Breaker abre apos falhas" "estado=$st - chamadas ao BCB=$n"
+
+          # 6. Circuito aberto: nao chama o BCB e usa o banco local
+          antes=$(calls falha.log); r=$(req "localhost:8101/currencies?source=USD&target=BRL"); b=$(cat body.txt); depois=$(calls falha.log)
+          echo "$b" | grep -q 'Fonte: banco local' && [ "$antes" = "$depois" ]; res $? "6. Circuito aberto usa banco local sem chamar o BCB" "HTTP $r - chamadas antes=$antes depois=$depois - $b"
+
+          # 4. Lentidao -> read timeout de 5s (3 tentativas) e fallback local
+          r=$(req "localhost:8102/currencies?source=USD&target=BRL"); b=$(cat body.txt); t=${r#* }; n=$(grep -ci "timed out" lento.log || true)
+          echo "$b" | grep -q 'Fonte: banco local' && awk "BEGIN{exit !($t > 14 && $t < 22)}"; res $? "4. BCB lento: read timeout 5s" "HTTP $r s - timeouts no log=$n - $b"
+
+          # Integracao: product-api -> currency-api (Consul) continua funcionando
+          r=$(req "localhost:8000/products/1?targetCurrency=BRL"); b=$(cat body.txt)
+          echo "$b" | jq -e '.convertedPrice > 0' >/dev/null && echo "$b" | grep -q 'Fonte: BCB'; res $? "Integracao product-api -> currency-api" "HTTP $r - $(echo "$b" | jq -c '{model, price, convertedPrice, environment}')"
+
+          echo "" >> $S
+          echo "### Logs relevantes" >> $S
+          echo '```' >> $S
+          for f in normal falha lento; do echo "--- $f.log"; grep -E "Chamando API do BCB|BCB nao possui|Sem cotacao no BCB|Falha ao consultar" $f.log | sed -E 's/^.*(INFO|WARN)/\1/' | head -12; done >> $S
+          echo '```' >> $S
+          exit $FAIL
+      - name: Logs completos
+        if: always()
+        run: |
+          for f in normal.log falha.log lento.log product.log; do echo "===== $f"; tail -n 60 $f || true; done
