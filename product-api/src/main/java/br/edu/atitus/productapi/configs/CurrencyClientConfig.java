@@ -1,6 +1,6 @@
-package br.edu.atitus.currencyapi.configs;
+package br.edu.atitus.productapi.configs;
 
-import br.edu.atitus.currencyapi.clients.CurrencyClient;
+import br.edu.atitus.productapi.clients.CurrencyClient;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
