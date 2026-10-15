@@ -1,7 +1,7 @@
-package br.edu.atitus.currencyapi.servicesimpl;
+package br.edu.atitus.productapi.servicesimpl;
 
-import br.edu.atitus.currencyapi.clients.CurrencyClient;
-import br.edu.atitus.currencyapi.dtos.CurrencyResponse;
+import br.edu.atitus.productapi.clients.CurrencyClient;
+import br.edu.atitus.productapi.dtos.CurrencyResponse;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
