@@ -1,4 +1,4 @@
-package br.edu.atitus.currencyapi.entities;
+package br.edu.atitus.productapi.entities;
 
 import jakarta.persistence.*;
 
