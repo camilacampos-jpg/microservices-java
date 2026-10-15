@@ -1,4 +1,4 @@
-package br.edu.atitus.currencyapi;
+package br.edu.atitus.productapi;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
