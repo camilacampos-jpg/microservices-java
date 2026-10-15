@@ -12,7 +12,8 @@ import org.springframework.web.bind.annotation.*;
 public class CurrencyController {
     private final CurrencyService service;
 
-    public CurrencyController(@Qualifier("currencyServiceJpa") CurrencyService service) {
+    // Consulta o BCB e usa o banco local como fallback (CurrencyServiceBcb)
+    public CurrencyController(@Qualifier("currencyServiceBcb") CurrencyService service) {
         this.service = service;
     }
 
@@ -26,11 +27,12 @@ public class CurrencyController {
     }
 
     @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<String> entityNotFoundExceptionHandler(EntityNotFoundException ex){
+    public ResponseEntity<String> entityNotFoundExceptionHandler(EntityNotFoundException ex) {
         return ResponseEntity.status(404).body(ex.getMessage());
     }
+
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<String> exceptionHandler(Exception ex){
+    public ResponseEntity<String> exceptionHandler(Exception ex) {
         return ResponseEntity.status(500).body("Ops!!! Algo deu errado.");
     }
-   }
+}
