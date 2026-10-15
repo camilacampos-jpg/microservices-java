@@ -1,4 +1,4 @@
-package br.edu.atitus.currencyapi.dtos;
+package br.edu.atitus.productapi.dtos;
 
 public record CurrencyResponse(
         String sourceCurrency,
