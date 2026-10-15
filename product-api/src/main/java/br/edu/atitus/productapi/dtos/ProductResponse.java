@@ -1,6 +1,6 @@
-package br.edu.atitus.currencyapi.dtos;
+package br.edu.atitus.productapi.dtos;
 
-import br.edu.atitus.currencyapi.entities.ProductEntity;
+import br.edu.atitus.productapi.entities.ProductEntity;
 
 public record ProductResponse(
         Long id,
